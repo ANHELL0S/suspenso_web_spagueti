@@ -1,248 +1,263 @@
 <?php
-// DEPURACION
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+// 1. Configuración de la base de datos
+$host = 'localhost';
+$db   = 'articulos_cientificos';
+$user = 'root';
+$pass = '';
+$charset = 'utf8mb4';
 
-require 'database.php';
-
-// Obtener el ID del producto que se desea editar (modo edición)
-$actualizar_producto_id = isset($_GET['actualizar_producto_id']) ? (int)$_GET['actualizar_producto_id'] : null;
-
-// Manejar acciones POST
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['crear_producto'])) {
-        $titulo = trim($_POST['titulo']);
-        $resumen = trim($_POST['resumen'] ?? '');
-
-        if ($titulo !== '') {
-            $stmt = $pdo->prepare("INSERT INTO productos (titulo, resumen) VALUES (?, ?)");
-            $stmt->execute([$titulo, $resumen]);
-        }
-    } elseif (isset($_POST['delete_product'])) {
-        $producto_id = (int)$_POST['producto_id'];
-        $stmt = $pdo->prepare("DELETE FROM productos WHERE id = ?");
-        $stmt->execute([$producto_id]);
-    } elseif (isset($_POST['actualizar_producto'])) {
-        $producto_id = (int)$_POST['producto_id'];
-        $titulo = trim($_POST['titulo']);
-        $resumen = trim($_POST['resumen'] ?? '');
-
-        if ($titulo !== '') {
-            // Actualizar el producto solo si pertenece al usuario
-            $stmt = $pdo->prepare("UPDATE productos SET 
-                                  titulo = ?, resumen = ?
-                                  WHERE id = ?");
-            $stmt->execute([$titulo, $resumen, $producto_id]);
-        }
-    }
-
-    // Redirigir para evitar resubmisión de formulario y salir modo edición
-    $url = strtok($_SERVER['REQUEST_URI'], '?');
-    header("Location: " . $url);
-    exit;
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$db;charset=$charset", $user, $pass);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (\PDOException $e) {
+    die("Error de conexión: " . $e->getMessage());
 }
 
-// Obtener productos del usuario
-$stmt = $pdo->prepare("SELECT * FROM productos ORDER BY titulo ASC");
-$stmt->execute();
-$productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// 2. Crear tablas si no existen
+$pdo->exec("CREATE TABLE IF NOT EXISTS articulos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    titulo VARCHAR(255) NOT NULL,
+    resumen TEXT NOT NULL,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)");
+
+$pdo->exec("CREATE TABLE IF NOT EXISTS comentarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    articulo_id INT NOT NULL,
+    autor VARCHAR(100) NOT NULL,
+    contenido TEXT NOT NULL,
+    fecha_publicacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (articulo_id) REFERENCES articulos(id) ON DELETE CASCADE
+)");
+
+// 3. Funciones principales
+
+// Agregar artículo científico
+function agregarArticulo($titulo, $resumen)
+{
+    global $pdo;
+    $stmt = $pdo->prepare("INSERT INTO articulos (titulo, resumen) VALUES (?, ?)");
+    $stmt->execute([$titulo, $resumen]);
+    return $pdo->lastInsertId();
+}
+
+// Enviar comentario
+function enviarComentario($articulo_id, $autor, $contenido)
+{
+    global $pdo;
+    $stmt = $pdo->prepare("INSERT INTO comentarios (articulo_id, autor, contenido) VALUES (?, ?, ?)");
+    return $stmt->execute([$articulo_id, $autor, $contenido]);
+}
+
+// Obtener comentarios de un artículo
+function obtenerComentarios($articulo_id)
+{
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT * FROM comentarios WHERE articulo_id = ? ORDER BY fecha_publicacion DESC");
+    $stmt->execute([$articulo_id]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Obtener todos los artículos
+function obtenerArticulos()
+{
+    global $pdo;
+    $stmt = $pdo->query("SELECT * FROM articulos ORDER BY fecha_creacion DESC");
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// 4. Procesamiento de formularios
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (isset($_POST['accion'])) {
+        switch ($_POST['accion']) {
+            case 'agregar_articulo':
+                $id = agregarArticulo($_POST['titulo'], $_POST['resumen']);
+                header("Location: ?articulo_id=$id");
+                exit;
+                break;
+
+            case 'enviar_comentario':
+                enviarComentario($_POST['articulo_id'], $_POST['autor'], $_POST['contenido']);
+                header("Location: ?articulo_id=" . $_POST['articulo_id']);
+                exit;
+                break;
+        }
+    }
+}
+
+// 5. Obtener datos para mostrar
+$articulo_id = $_GET['articulo_id'] ?? null;
+$articulo_actual = null;
+$comentarios = [];
+
+if ($articulo_id) {
+    $stmt = $pdo->prepare("SELECT * FROM articulos WHERE id = ?");
+    $stmt->execute([$articulo_id]);
+    $articulo_actual = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($articulo_actual) {
+        $comentarios = obtenerComentarios($articulo_id);
+    }
+}
+
+$articulos = obtenerArticulos();
 ?>
 
 <!DOCTYPE html>
 <html lang="es">
 
 <head>
-    <meta charset="UTF-8" />
-    <title>Inventario de Productos</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Artículos Científicos</title>
     <style>
         body {
-            font-family: sans-serif;
-            max-width: 800px;
-            margin: 2rem auto;
-            padding: 1rem;
-            background: #fff;
-            color: #333;
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
         }
 
-        .top-bar {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 1.5rem;
-            font-size: 0.9rem;
+        .container {
+            display: grid;
+            grid-template-columns: 30% 70%;
+            gap: 20px;
         }
 
-        .btn {
-            background: #000;
-            color: #fff;
-            padding: 0.4rem 0.8rem;
-            text-decoration: none;
-            border-radius: 4px;
+        .articulo {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
         }
 
-        h1 {
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
+        .articulo h2 {
+            margin-top: 0;
+            color: #2c3e50;
         }
 
-        h2 {
-            font-size: 1.2rem;
-            margin-bottom: 0.5rem;
+        .comentario {
+            background: white;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 15px;
         }
 
-        .card {
-            border: 1px solid #ddd;
-            padding: 1rem;
-            border-radius: 6px;
-            margin-bottom: 1.5rem;
+        .comentario .meta {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-bottom: 10px;
         }
 
-        form input,
-        form textarea,
-        form select {
+        form {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+        }
+
+        input,
+        textarea {
             width: 100%;
-            padding: 0.5rem;
-            margin: 0.5rem 0;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-family: inherit;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
         }
 
-        form button {
-            background: #000;
-            color: #fff;
-            padding: 0.5rem 1rem;
+        button {
+            background: #3498db;
+            color: white;
             border: none;
-            border-radius: 4px;
+            padding: 10px 15px;
             cursor: pointer;
         }
 
-        .product {
-            border-top: 1px solid #eee;
-            padding: 1rem 0;
+        button:hover {
+            background: #2980b9;
         }
 
-        .product h3 {
-            margin: 0 0 0.3rem;
+        .articulo-list {
+            list-style: none;
+            padding: 0;
         }
 
-        .product p {
-            margin: 0.2rem 0;
+        .articulo-list li {
+            margin-bottom: 10px;
         }
 
-        .product-info {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 0.5rem;
+        .articulo-list a {
+            text-decoration: none;
+            color: #2c3e50;
         }
 
-        .product-info span {
-            font-weight: bold;
-        }
-
-        .low-stock {
-            color: #d9534f;
-        }
-
-        .actions {
-            margin-top: 0.5rem;
-        }
-
-        .actions form {
-            display: inline;
-        }
-
-        .actions button {
-            background: rgb(235, 235, 235);
-            color: #333;
-            border: none;
-            padding: 0.3rem 0.6rem;
-            margin-right: 0.4rem;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-
-        .actions button:hover {
-            background: #ccc;
-        }
-
-        .link {
-            display: inline-block;
-            margin-top: 1rem;
-            font-size: 0.95rem;
+        .articulo-list a:hover {
             text-decoration: underline;
-            color: #000;
-        }
-
-        .stock-form {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-        }
-
-        .stock-form input {
-            width: 80px;
         }
     </style>
 </head>
 
 <body>
-    <div class="card">
-        <h2>Agregar Producto</h2>
-        <form method="POST" action="">
-            <input type="text" name="titulo" placeholder="Titulo del producto" required />
-            <textarea name="resumen" rows="3" placeholder="Descripción (opcional)"></textarea>
-            <button type="submit" name="crear_producto">Agregar Producto</button>
-        </form>
-    </div>
+    <h1>Sistema de Artículos Científicos</h1>
 
-    <div class="card">
-        <h2>Tus Productos</h2>
-        <?php if (empty($productos)) : ?>
-            <p>No tienes productos en tu inventario.</p>
-        <?php else : ?>
-            <?php foreach ($productos as $producto) : ?>
-                <div class="product">
-                    <?php if ($actualizar_producto_id === (int)$producto['id']) : ?>
-                        <!-- Modo edición -->
-                        <form method="POST" action="">
-                            <input type="hidden" name="producto_id" value="<?= (int)$producto['id'] ?>" />
-                            <input type="text" name="titulo" value="<?= htmlspecialchars($producto['titulo']) ?>" required />
-                            <textarea name="resumen" rows="3"><?= htmlspecialchars($producto['resumen']) ?></textarea>
-                            <div class="actions">
-                                <button type="submit" name="actualizar_producto">Guardar</button>
-                                <a href="<?= htmlspecialchars($_SERVER['PHP_SELF']) ?>" class="btn" style="background:#ccc; color:#000; text-decoration:none; padding:0.3rem 0.6rem; border-radius:4px; margin-left:0.5rem;">Cancelar</a>
-                            </div>
-                        </form>
-                    <?php else : ?>
-                        <!-- Modo normal -->
-                        <h3><?= htmlspecialchars($producto['titulo']) ?></h3>
-                        <p><?= nl2br(htmlspecialchars($producto['resumen'])) ?></p>
-                        <div class="product-info">
-                            <div>
-                                <span>Registrado:</span> <?= date('d/m/Y', strtotime($producto['created_at'])) ?>
-                            </div>
-                            <div>
-                                <span>Actualizado:</span> <?= date('d/m/Y', strtotime($producto['updated_at'])) ?>
-                            </div>
-                        </div>
+    <div class="container">
+        <!-- Columna izquierda: Lista de artículos -->
+        <div>
+            <h2>Artículos</h2>
+            <ul class="articulo-list">
+                <?php foreach ($articulos as $art): ?>
+                    <li>
+                        <a href="?articulo_id=<?= $art['id'] ?>"><?= htmlspecialchars($art['titulo']) ?></a>
+                        <small><?= date('d/m/Y', strtotime($art['fecha_creacion'])) ?></small>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
 
-                        <div class="actions">
-                            <div style="margin-top: 0.5rem;">
-                                <a href="?actualizar_producto_id=<?= (int)$producto['id'] ?>" class="btn" style="background:#111; margin-left:0.5rem;">Editar</a>
-                                <form method="POST" action="" style="display:inline;">
-                                    <input type="hidden" name="producto_id" value="<?= (int)$producto['id'] ?>" />
-                                    <button type="submit" name="delete_product" onclick="return confirm('¿Seguro que deseas eliminar este producto?')">Eliminar</button>
-                                </form>
-                            </div>
-                        </div>
-                    <?php endif; ?>
+            <h3>Agregar nuevo artículo</h3>
+            <form method="POST">
+                <input type="hidden" name="accion" value="agregar_articulo">
+                <input type="text" name="titulo" placeholder="Título del artículo" required>
+                <textarea name="resumen" placeholder="Resumen del artículo" rows="5" required></textarea>
+                <button type="submit">Publicar Artículo</button>
+            </form>
+        </div>
+
+        <!-- Columna derecha: Artículo seleccionado y comentarios -->
+        <div>
+            <?php if ($articulo_actual): ?>
+                <div class="articulo">
+                    <h2><?= htmlspecialchars($articulo_actual['titulo']) ?></h2>
+                    <p><?= nl2br(htmlspecialchars($articulo_actual['resumen'])) ?></p>
+                    <small>Publicado el: <?= date('d/m/Y H:i', strtotime($articulo_actual['fecha_creacion'])) ?></small>
                 </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
-    </div>
 
+                <h3>Comentarios</h3>
+                <?php if ($comentarios): ?>
+                    <?php foreach ($comentarios as $com): ?>
+                        <div class="comentario">
+                            <div class="meta">
+                                <strong><?= htmlspecialchars($com['autor']) ?></strong>
+                                <span><?= date('d/m/Y H:i', strtotime($com['fecha_publicacion'])) ?></span>
+                            </div>
+                            <p><?= nl2br(htmlspecialchars($com['contenido'])) ?></p>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <p>No hay comentarios aún. ¡Sé el primero en comentar!</p>
+                <?php endif; ?>
+
+                <h3>Enviar comentario</h3>
+                <form method="POST">
+                    <input type="hidden" name="accion" value="enviar_comentario">
+                    <input type="hidden" name="articulo_id" value="<?= $articulo_actual['id'] ?>">
+                    <input type="text" name="autor" placeholder="Tu nombre" required>
+                    <textarea name="contenido" placeholder="Tu comentario" rows="3" required></textarea>
+                    <button type="submit">Enviar Comentario</button>
+                </form>
+            <?php else: ?>
+                <p>Selecciona un artículo de la lista o crea uno nuevo.</p>
+            <?php endif; ?>
+        </div>
+    </div>
 </body>
 
 </html>
