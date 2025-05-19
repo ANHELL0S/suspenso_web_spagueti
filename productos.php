@@ -299,7 +299,7 @@ $seconds = $remaining_time % 60;
                             <form method="POST" action="" class="stock-form">
                                 <input type="hidden" name="producto_id" value="<?= (int)$producto['id'] ?>" />
                                 <input type="number" name="cantidad_nueva" value="1" min="-1000" max="1000" />
-                                <button type="submit" name="actualizar_stock">Actualizar Stock</button>
+                                <button type="submit" name="actualizar_stock">Añadir más stock</button>
                             </form>
 
                             <div style="margin-top: 0.5rem;">
