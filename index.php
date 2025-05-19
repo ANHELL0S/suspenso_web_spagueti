@@ -127,7 +127,7 @@ $valor_inventario = number_format((float) $valor_inventario, 2, '.', '');
         <div class="stats">
             <div class="stat">
                 <strong><?= $total_productos ?></strong>
-                Total
+                Total produtos
             </div>
 
             <div class="stat <?= $productos_bajo_stock > 0 ? 'danger' : '' ?>">
