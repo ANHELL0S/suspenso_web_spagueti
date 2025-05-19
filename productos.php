@@ -49,21 +49,22 @@ function enviarComentario($articulo_id, $autor, $contenido)
     return $stmt->execute([$articulo_id, $autor, $contenido]);
 }
 
-// Obtener comentarios de un artículo
-function obtenerComentarios($articulo_id)
+// Obtener todos los artículos con sus comentarios
+function obtenerArticulosConComentarios()
 {
     global $pdo;
-    $stmt = $pdo->prepare("SELECT * FROM comentarios WHERE articulo_id = ? ORDER BY fecha_publicacion DESC");
-    $stmt->execute([$articulo_id]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
 
-// Obtener todos los artículos
-function obtenerArticulos()
-{
-    global $pdo;
-    $stmt = $pdo->query("SELECT * FROM articulos ORDER BY fecha_creacion DESC");
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Obtener todos los artículos
+    $articulos = $pdo->query("SELECT * FROM articulos ORDER BY fecha_creacion DESC")->fetchAll(PDO::FETCH_ASSOC);
+
+    // Para cada artículo, obtener sus comentarios
+    foreach ($articulos as &$articulo) {
+        $stmt = $pdo->prepare("SELECT * FROM comentarios WHERE articulo_id = ? ORDER BY fecha_publicacion DESC");
+        $stmt->execute([$articulo['id']]);
+        $articulo['comentarios'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    return $articulos;
 }
 
 // 4. Procesamiento de formularios
@@ -72,13 +73,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         switch ($_POST['accion']) {
             case 'agregar_articulo':
                 $id = agregarArticulo($_POST['titulo'], $_POST['resumen']);
-                header("Location: ?articulo_id=$id");
+                header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
                 break;
 
             case 'enviar_comentario':
                 enviarComentario($_POST['articulo_id'], $_POST['autor'], $_POST['contenido']);
-                header("Location: ?articulo_id=" . $_POST['articulo_id']);
+                header("Location: " . $_SERVER['PHP_SELF']);
                 exit;
                 break;
         }
@@ -86,21 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // 5. Obtener datos para mostrar
-$articulo_id = $_GET['articulo_id'] ?? null;
-$articulo_actual = null;
-$comentarios = [];
-
-if ($articulo_id) {
-    $stmt = $pdo->prepare("SELECT * FROM articulos WHERE id = ?");
-    $stmt->execute([$articulo_id]);
-    $articulo_actual = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($articulo_actual) {
-        $comentarios = obtenerComentarios($articulo_id);
-    }
-}
-
-$articulos = obtenerArticulos();
+$articulos = obtenerArticulosConComentarios();
 ?>
 
 <!DOCTYPE html>
@@ -119,22 +106,22 @@ $articulos = obtenerArticulos();
             padding: 20px;
         }
 
-        .container {
-            display: grid;
-            grid-template-columns: 30% 70%;
-            gap: 20px;
-        }
-
         .articulo {
             background: #f5f5f5;
             padding: 20px;
             border-radius: 5px;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
         }
 
         .articulo h2 {
             margin-top: 0;
             color: #2c3e50;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        .comentarios {
+            margin-top: 20px;
         }
 
         .comentario {
@@ -148,20 +135,37 @@ $articulos = obtenerArticulos();
             font-size: 0.9em;
             color: #7f8c8d;
             margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
         }
 
         form {
             background: #ecf0f1;
             padding: 20px;
             border-radius: 5px;
+            margin-bottom: 30px;
         }
 
-        input,
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
         textarea {
             width: 100%;
             padding: 8px;
-            margin-bottom: 10px;
             border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        textarea {
+            min-height: 100px;
         }
 
         button {
@@ -170,28 +174,16 @@ $articulos = obtenerArticulos();
             border: none;
             padding: 10px 15px;
             cursor: pointer;
+            border-radius: 4px;
         }
 
         button:hover {
             background: #2980b9;
         }
 
-        .articulo-list {
-            list-style: none;
-            padding: 0;
-        }
-
-        .articulo-list li {
-            margin-bottom: 10px;
-        }
-
-        .articulo-list a {
-            text-decoration: none;
-            color: #2c3e50;
-        }
-
-        .articulo-list a:hover {
-            text-decoration: underline;
+        .no-comments {
+            color: #7f8c8d;
+            font-style: italic;
         }
     </style>
 </head>
@@ -199,65 +191,76 @@ $articulos = obtenerArticulos();
 <body>
     <h1>Sistema de Artículos Científicos</h1>
 
-    <div class="container">
-        <!-- Columna izquierda: Lista de artículos -->
-        <div>
-            <h2>Artículos</h2>
-            <ul class="articulo-list">
-                <?php foreach ($articulos as $art): ?>
-                    <li>
-                        <a href="?articulo_id=<?= $art['id'] ?>"><?= htmlspecialchars($art['titulo']) ?></a>
-                        <small><?= date('d/m/Y', strtotime($art['fecha_creacion'])) ?></small>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
+    <!-- Formulario para agregar artículo -->
+    <form method="POST">
+        <h2>Agregar nuevo artículo científico</h2>
+        <input type="hidden" name="accion" value="agregar_articulo">
 
-            <h3>Agregar nuevo artículo</h3>
-            <form method="POST">
-                <input type="hidden" name="accion" value="agregar_articulo">
-                <input type="text" name="titulo" placeholder="Título del artículo" required>
-                <textarea name="resumen" placeholder="Resumen del artículo" rows="5" required></textarea>
-                <button type="submit">Publicar Artículo</button>
-            </form>
+        <div class="form-group">
+            <label for="titulo">Título del artículo:</label>
+            <input type="text" id="titulo" name="titulo" required>
         </div>
 
-        <!-- Columna derecha: Artículo seleccionado y comentarios -->
-        <div>
-            <?php if ($articulo_actual): ?>
-                <div class="articulo">
-                    <h2><?= htmlspecialchars($articulo_actual['titulo']) ?></h2>
-                    <p><?= nl2br(htmlspecialchars($articulo_actual['resumen'])) ?></p>
-                    <small>Publicado el: <?= date('d/m/Y H:i', strtotime($articulo_actual['fecha_creacion'])) ?></small>
-                </div>
+        <div class="form-group">
+            <label for="resumen">Resumen:</label>
+            <textarea id="resumen" name="resumen" required></textarea>
+        </div>
 
-                <h3>Comentarios</h3>
-                <?php if ($comentarios): ?>
-                    <?php foreach ($comentarios as $com): ?>
-                        <div class="comentario">
-                            <div class="meta">
-                                <strong><?= htmlspecialchars($com['autor']) ?></strong>
-                                <span><?= date('d/m/Y H:i', strtotime($com['fecha_publicacion'])) ?></span>
+        <button type="submit">Publicar Artículo</button>
+    </form>
+
+    <!-- Lista de artículos con sus comentarios -->
+    <h2>Artículos Científicos</h2>
+
+    <?php if (count($articulos) > 0): ?>
+        <?php foreach ($articulos as $articulo): ?>
+            <div class="articulo">
+                <h2><?= htmlspecialchars($articulo['titulo']) ?></h2>
+                <p><?= nl2br(htmlspecialchars($articulo['resumen'])) ?></p>
+                <small>Publicado el: <?= date('d/m/Y H:i', strtotime($articulo['fecha_creacion'])) ?></small>
+
+                <!-- Comentarios del artículo -->
+                <div class="comentarios">
+                    <h3>Comentarios (<?= count($articulo['comentarios']) ?>)</h3>
+
+                    <?php if (count($articulo['comentarios']) > 0): ?>
+                        <?php foreach ($articulo['comentarios'] as $comentario): ?>
+                            <div class="comentario">
+                                <div class="meta">
+                                    <span class="autor"><?= htmlspecialchars($comentario['autor']) ?></span>
+                                    <span class="fecha"><?= date('d/m/Y H:i', strtotime($comentario['fecha_publicacion'])) ?></span>
+                                </div>
+                                <p><?= nl2br(htmlspecialchars($comentario['contenido'])) ?></p>
                             </div>
-                            <p><?= nl2br(htmlspecialchars($com['contenido'])) ?></p>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <p>No hay comentarios aún. ¡Sé el primero en comentar!</p>
-                <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <p class="no-comments">No hay comentarios aún.</p>
+                    <?php endif; ?>
 
-                <h3>Enviar comentario</h3>
-                <form method="POST">
-                    <input type="hidden" name="accion" value="enviar_comentario">
-                    <input type="hidden" name="articulo_id" value="<?= $articulo_actual['id'] ?>">
-                    <input type="text" name="autor" placeholder="Tu nombre" required>
-                    <textarea name="contenido" placeholder="Tu comentario" rows="3" required></textarea>
-                    <button type="submit">Enviar Comentario</button>
-                </form>
-            <?php else: ?>
-                <p>Selecciona un artículo de la lista o crea uno nuevo.</p>
-            <?php endif; ?>
-        </div>
-    </div>
+                    <!-- Formulario para nuevo comentario -->
+                    <form method="POST">
+                        <h4>Agregar comentario</h4>
+                        <input type="hidden" name="accion" value="enviar_comentario">
+                        <input type="hidden" name="articulo_id" value="<?= $articulo['id'] ?>">
+
+                        <div class="form-group">
+                            <label for="autor-<?= $articulo['id'] ?>">Tu nombre:</label>
+                            <input type="text" id="autor-<?= $articulo['id'] ?>" name="autor" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="contenido-<?= $articulo['id'] ?>">Tu comentario:</label>
+                            <textarea id="contenido-<?= $articulo['id'] ?>" name="contenido" required></textarea>
+                        </div>
+
+                        <button type="submit">Enviar Comentario</button>
+                    </form>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    <?php else: ?>
+        <p>No hay artículos publicados aún.</p>
+    <?php endif; ?>
 </body>
 
 </html>
