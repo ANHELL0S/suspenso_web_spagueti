@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         h2 {
-            color: #2c3e50;
+            color: #111111;
             text-align: center;
             margin-bottom: 25px;
         }
@@ -95,10 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         form {
-            background: white;
             padding: 25px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
         }
 
         input {
@@ -112,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         button {
-            background-color: #3498db;
+            background-color: #111111;
             color: white;
             padding: 14px;
             margin: 20px 0 10px;
@@ -126,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         button:hover {
-            background-color: #2980b9;
+            background-color: rgb(53, 53, 53);
         }
 
         p {
@@ -136,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         a {
-            color: #3498db;
+            color: #111111;
             text-decoration: none;
             font-weight: 500;
         }
