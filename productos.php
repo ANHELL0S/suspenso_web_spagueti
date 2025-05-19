@@ -1,14 +1,10 @@
 <?php
-require 'config/Session.php';
+// DEPURACION
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 require 'database.php';
-
-Session::start();
-
-if (!Session::isActive()) {
-    $_SESSION['redirect_url'] = $_SERVER['REQUEST_URI'];
-    header('Location: login.php');
-    exit;
-}
 
 // Obtener el ID del producto que se desea editar (modo edición)
 $actualizar_producto_id = isset($_GET['actualizar_producto_id']) ? (int)$_GET['actualizar_producto_id'] : null;
@@ -16,41 +12,28 @@ $actualizar_producto_id = isset($_GET['actualizar_producto_id']) ? (int)$_GET['a
 // Manejar acciones POST
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['crear_producto'])) {
-        $nombre = trim($_POST['nombre']);
-        $descripcion = trim($_POST['descripcion'] ?? '');
-        $cantidad = (int)$_POST['cantidad'];
-        $precio = (float)$_POST['precio'];
+        $titulo = trim($_POST['titulo']);
+        $resumen = trim($_POST['resumen'] ?? '');
 
-        if ($nombre !== '' && $cantidad >= 0 && $precio >= 0) {
-            $stmt = $pdo->prepare("INSERT INTO productos (user_id, nombre, descripcion, cantidad, precio) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$_SESSION['user_id'], $nombre, $descripcion, $cantidad, $precio]);
+        if ($titulo !== '') {
+            $stmt = $pdo->prepare("INSERT INTO productos (titulo, resumen) VALUES (?, ?)");
+            $stmt->execute([$titulo, $resumen]);
         }
-    } elseif (isset($_POST['actualizar_stock'])) {
-        $producto_id = (int)$_POST['producto_id'];
-        $cantidad_nueva = (int)$_POST['cantidad_nueva'];
-
-        // Actualizar el stock solo si pertenece al usuario
-        $stmt = $pdo->prepare("UPDATE productos SET cantidad = cantidad + ? 
-                               WHERE id = ? AND user_id = ?");
-        $stmt->execute([$cantidad_nueva, $producto_id, $_SESSION['user_id']]);
     } elseif (isset($_POST['delete_product'])) {
         $producto_id = (int)$_POST['producto_id'];
-        $stmt = $pdo->prepare("DELETE FROM productos WHERE id = ? AND user_id = ?");
-        $stmt->execute([$producto_id, $_SESSION['user_id']]);
+        $stmt = $pdo->prepare("DELETE FROM productos WHERE id = ?");
+        $stmt->execute([$producto_id]);
     } elseif (isset($_POST['actualizar_producto'])) {
         $producto_id = (int)$_POST['producto_id'];
-        $nombre = trim($_POST['nombre']);
-        $descripcion = trim($_POST['descripcion'] ?? '');
-        $cantidad = (int)$_POST['cantidad'];
-        $precio = (float)$_POST['precio'];
+        $titulo = trim($_POST['titulo']);
+        $resumen = trim($_POST['resumen'] ?? '');
 
-        if ($nombre !== '' && $cantidad >= 0 && $precio >= 0) {
+        if ($titulo !== '') {
             // Actualizar el producto solo si pertenece al usuario
             $stmt = $pdo->prepare("UPDATE productos SET 
-                                  nombre = ?, descripcion = ?, cantidad = ?, 
-                                  precio = ?
-                                  WHERE id = ? AND user_id = ?");
-            $stmt->execute([$nombre, $descripcion, $cantidad, $precio, $producto_id, $_SESSION['user_id']]);
+                                  titulo = ?, resumen = ?
+                                  WHERE id = ?");
+            $stmt->execute([$titulo, $resumen, $producto_id]);
         }
     }
 
@@ -61,14 +44,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // Obtener productos del usuario
-$stmt = $pdo->prepare("SELECT * FROM productos WHERE user_id = ? ORDER BY nombre ASC");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt = $pdo->prepare("SELECT * FROM productos ORDER BY titulo ASC");
+$stmt->execute();
 $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Obtener tiempo restante de sesión para mostrar (opcional)
-$remaining_time = Session::getRemainingTime();
-$minutes = floor($remaining_time / 60);
-$seconds = $remaining_time % 60;
 ?>
 
 <!DOCTYPE html>
@@ -210,34 +188,11 @@ $seconds = $remaining_time % 60;
 </head>
 
 <body>
-
-    <div class="top-bar">
-        <div>Sesión: <?= htmlspecialchars("$minutes:$seconds") ?> min</div>
-        <a href="logout.php" class="btn">Cerrar sesión</a>
-    </div>
-
-    <div>
-        <h1>Inventario de Productos</h1>
-        <a href="index.php" class="link">← Volver al inicio</a>
-    </div>
-
-    <br />
-
     <div class="card">
         <h2>Agregar Producto</h2>
         <form method="POST" action="">
-            <input type="text" name="nombre" placeholder="Nombre del producto" required />
-            <textarea name="descripcion" rows="3" placeholder="Descripción (opcional)"></textarea>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div>
-                    <label for="cantidad">Cantidad</label>
-                    <input type="number" name="cantidad" min="0" value="0" required />
-                </div>
-                <div>
-                    <label for="precio">Precio</label>
-                    <input type="number" name="precio" min="0" step="0.01" placeholder="0.00" required />
-                </div>
-            </div>
+            <input type="text" name="titulo" placeholder="Titulo del producto" required />
+            <textarea name="resumen" rows="3" placeholder="Descripción (opcional)"></textarea>
             <button type="submit" name="crear_producto">Agregar Producto</button>
         </form>
     </div>
@@ -253,18 +208,8 @@ $seconds = $remaining_time % 60;
                         <!-- Modo edición -->
                         <form method="POST" action="">
                             <input type="hidden" name="producto_id" value="<?= (int)$producto['id'] ?>" />
-                            <input type="text" name="nombre" value="<?= htmlspecialchars($producto['nombre']) ?>" required />
-                            <textarea name="descripcion" rows="3"><?= htmlspecialchars($producto['descripcion']) ?></textarea>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                                <div>
-                                    <label for="cantidad">Cantidad</label>
-                                    <input type="number" name="cantidad" min="0" value="<?= (int)$producto['cantidad'] ?>" required />
-                                </div>
-                                <div>
-                                    <label for="precio">Precio</label>
-                                    <input type="number" name="precio" min="0" step="0.01" value="<?= number_format($producto['precio'], 2) ?>" required />
-                                </div>
-                            </div>
+                            <input type="text" name="titulo" value="<?= htmlspecialchars($producto['titulo']) ?>" required />
+                            <textarea name="resumen" rows="3"><?= htmlspecialchars($producto['resumen']) ?></textarea>
                             <div class="actions">
                                 <button type="submit" name="actualizar_producto">Guardar</button>
                                 <a href="<?= htmlspecialchars($_SERVER['PHP_SELF']) ?>" class="btn" style="background:#ccc; color:#000; text-decoration:none; padding:0.3rem 0.6rem; border-radius:4px; margin-left:0.5rem;">Cancelar</a>
@@ -272,21 +217,9 @@ $seconds = $remaining_time % 60;
                         </form>
                     <?php else : ?>
                         <!-- Modo normal -->
-                        <h3><?= htmlspecialchars($producto['nombre']) ?></h3>
-                        <?php if (!empty($producto['descripcion'])) : ?>
-                            <p><?= nl2br(htmlspecialchars($producto['descripcion'])) ?></p>
-                        <?php endif; ?>
-
+                        <h3><?= htmlspecialchars($producto['titulo']) ?></h3>
+                        <p><?= nl2br(htmlspecialchars($producto['resumen'])) ?></p>
                         <div class="product-info">
-                            <div>
-                                <span>Cantidad:</span>
-                                <span class="<?= $producto['cantidad'] <= 5 ? 'low-stock' : '' ?>">
-                                    <?= (int)$producto['cantidad'] ?>
-                                </span>
-                            </div>
-                            <div>
-                                <span>Precio:</span> $<?= number_format($producto['precio'], 2) ?>
-                            </div>
                             <div>
                                 <span>Registrado:</span> <?= date('d/m/Y', strtotime($producto['created_at'])) ?>
                             </div>
@@ -296,12 +229,6 @@ $seconds = $remaining_time % 60;
                         </div>
 
                         <div class="actions">
-                            <form method="POST" action="" class="stock-form">
-                                <input type="hidden" name="producto_id" value="<?= (int)$producto['id'] ?>" />
-                                <input type="number" name="cantidad_nueva" value="1" min="-1000" max="1000" />
-                                <button type="submit" name="actualizar_stock">Añadir más stock</button>
-                            </form>
-
                             <div style="margin-top: 0.5rem;">
                                 <a href="?actualizar_producto_id=<?= (int)$producto['id'] ?>" class="btn" style="background:#111; margin-left:0.5rem;">Editar</a>
                                 <form method="POST" action="" style="display:inline;">
