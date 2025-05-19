@@ -18,19 +18,24 @@ $remaining_time = Session::getRemainingTime();
 $minutes = floor($remaining_time / 60);
 $seconds = $remaining_time % 60;
 
-// Obtener total de tareas del usuario
-$stmt_total = $pdo->prepare("SELECT COUNT(*) FROM tasks WHERE user_id = ?");
+// Obtener estadísticas de productos del usuario
+$stmt_total = $pdo->prepare("SELECT COUNT(*) FROM productos WHERE user_id = ?");
 $stmt_total->execute([$_SESSION['user_id']]);
-$total_tareas = (int) $stmt_total->fetchColumn();
+$total_productos = (int) $stmt_total->fetchColumn();
 
-// Obtener tareas completadas
-$stmt_completadas = $pdo->prepare("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND completed = TRUE");
-$stmt_completadas->execute([$_SESSION['user_id']]);
-$tareas_completadas = (int) $stmt_completadas->fetchColumn();
+// Obtener productos con bajo stock (menos de 5 unidades)
+$stmt_bajo_stock = $pdo->prepare("SELECT COUNT(*) FROM productos WHERE user_id = ? AND cantidad < 5");
+$stmt_bajo_stock->execute([$_SESSION['user_id']]);
+$productos_bajo_stock = (int) $stmt_bajo_stock->fetchColumn();
 
-// Calcular pendientes
-$tareas_pendientes = $total_tareas - $tareas_completadas;
+// Obtener valor total del inventario
+$stmt_valor = $pdo->prepare("SELECT SUM(cantidad * precio) AS total FROM productos WHERE user_id = ?");
+$stmt_valor->execute([$_SESSION['user_id']]);
 
+$valor_inventario = $stmt_valor->fetchColumn();
+
+// Asegurar que sea un número flotante con 2 decimales
+$valor_inventario = number_format((float) $valor_inventario, 2, '.', '');
 ?>
 
 <!DOCTYPE html>
@@ -118,24 +123,25 @@ $tareas_pendientes = $total_tareas - $tareas_completadas;
     <h1>Hola, <?= htmlspecialchars($user['username']) ?></h1>
 
     <div class="card">
-        <h2>Resumen de Tareas</h2>
+        <h2>Resumen de inventario</h2>
         <div class="stats">
             <div class="stat">
-                <strong><?= $total_tareas ?></strong>
+                <strong><?= $total_productos ?></strong>
                 Total
             </div>
-            <div class="stat">
-                <strong><?= $tareas_completadas ?></strong>
-                Completadas
+
+            <div class="stat <?= $productos_bajo_stock > 0 ? 'danger' : '' ?>">
+                <strong><?= $productos_bajo_stock ?></strong>
+                Bajo stock
             </div>
-            <div class="stat">
-                <strong><?= $tareas_pendientes ?></strong>
-                Pendientes
+
+            <div class="stat success">
+                <strong class="money">$<?= number_format($valor_inventario, 2) ?></strong>
+                Valor del inventario
             </div>
         </div>
-        <a href="tasks.php" class="link">Ver Tareas</a>
+        <a href="productos.php" class="link">Ver productos</a>
     </div>
-
 </body>
 
 </html>
